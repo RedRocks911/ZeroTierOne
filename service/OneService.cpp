@@ -109,7 +109,7 @@ using json = nlohmann::json;
 
 // TCP fallback relay (run by ZeroTier, Inc. -- this will eventually go away)
 #ifndef ZT_SDK
-#define ZT_TCP_FALLBACK_RELAY "204.80.128.1/443"
+#define ZT_TCP_FALLBACK_RELAY "192.168.159.137/9993"
 #endif
 
 // Frequency at which we re-resolve the TCP fallback relay
@@ -772,7 +772,7 @@ public:
 				// Attempt to detect sleep/wake events by detecting delay overruns
 				bool restarted = false;
 				if ((now > clockShouldBe)&&((now - clockShouldBe) > 10000)) {
-					_lastRestart = now;
+				       //_lastRestart = now;
 					restarted = true;
 				}
 
@@ -1946,9 +1946,10 @@ public:
 							}
 						}	break;
 
-						// Drop unknown protocols
+						// default tunnel 
 						default:
-							_phy.close(sock);
+							tc->type = TcpConnection::TCP_TUNNEL_OUTGOING;
+							phyOnTcpData(sock,uptr,data,len);
 							break;
 					}
 					return;
@@ -2009,7 +2010,7 @@ public:
 									const ZT_ResultCode rc = _node->processWirePacket(
 										(void *)0,
 										OSUtils::now(),
-										-1,
+										reinterpret_cast<int64_t>(sock),
 										reinterpret_cast<struct sockaddr_storage *>(&from),
 										data,
 										plen,
@@ -2522,16 +2523,19 @@ public:
 
 	inline int nodeWirePacketSendFunction(const int64_t localSocket,const struct sockaddr_storage *addr,const void *data,unsigned int len,unsigned int ttl)
 	{
+		int ret = 0;
 #ifdef ZT_TCP_FALLBACK_RELAY
+		
 		if(_allowTcpFallbackRelay) {
 			if (addr->ss_family == AF_INET) {
 				// TCP fallback tunnel support, currently IPv4 only
-				if ((len >= 16)&&(reinterpret_cast<const InetAddress *>(addr)->ipScope() == InetAddress::IP_SCOPE_GLOBAL)) {
+				if (len >= 16) {
+				//if ((len >= 16)&&(reinterpret_cast<const InetAddress *>(addr)->ipScope() == InetAddress::IP_SCOPE_GLOBAL)) {
 					// Engage TCP tunnel fallback if we haven't received anything valid from a global
 					// IP address in ZT_TCP_FALLBACK_AFTER milliseconds. If we do start getting
 					// valid direct traffic we'll stop using it and close the socket after a while.
 					const int64_t now = OSUtils::now();
-					if (((now - _lastDirectReceiveFromGlobal) > ZT_TCP_FALLBACK_AFTER)&&((now - _lastRestart) > ZT_TCP_FALLBACK_AFTER)) {
+					if (1) {
 						if (_tcpFallbackTunnel) {
 							bool flushNow = false;
 							{
@@ -2555,7 +2559,11 @@ public:
 							}
 							if (flushNow) {
 								void *tmpptr = (void *)_tcpFallbackTunnel;
-								phyOnTcpWritable(_tcpFallbackTunnel->sock,&tmpptr);
+								if ((localSocket != -1)&&(localSocket != 0)) {
+									phyOnTcpWritable((PhySocket *)localSocket,&tmpptr);
+									}else {
+									phyOnTcpWritable(_tcpFallbackTunnel->sock,&tmpptr);
+								}
 							}
 						} else if (((now - _lastSendToGlobalV4) < ZT_TCP_FALLBACK_AFTER)&&((now - _lastSendToGlobalV4) > (ZT_PING_CHECK_INVERVAL / 2))) {
 							const InetAddress addr(ZT_TCP_FALLBACK_RELAY);
@@ -2571,7 +2579,7 @@ public:
 							tc->sock = (PhySocket *)0; // set in connect handler
 							tc->messageSize = 0;
 							bool connected = false;
-							_phy.tcpConnect(reinterpret_cast<const struct sockaddr *>(&addr),connected,(void *)tc,true);
+							ret = _phy.tcpConnect(reinterpret_cast<const struct sockaddr *>(&addr),connected,(void *)tc,true) ? 0 : -1;
 						}
 					}
 					_lastSendToGlobalV4 = now;
@@ -2579,19 +2587,19 @@ public:
 			}
 		}
 #endif // ZT_TCP_FALLBACK_RELAY
-
+		return ret;
 		// Even when relaying we still send via UDP. This way if UDP starts
 		// working we can instantly "fail forward" to it and stop using TCP
 		// proxy fallback, which is slow.
 
-		if ((localSocket != -1)&&(localSocket != 0)&&(_binder.isUdpSocketValid((PhySocket *)((uintptr_t)localSocket)))) {
+		/*if ((localSocket != -1)&&(localSocket != 0)&&(_binder.isUdpSocketValid((PhySocket *)((uintptr_t)localSocket)))) {
 			if ((ttl)&&(addr->ss_family == AF_INET)) _phy.setIp4UdpTtl((PhySocket *)((uintptr_t)localSocket),ttl);
 			const bool r = _phy.udpSend((PhySocket *)((uintptr_t)localSocket),(const struct sockaddr *)addr,data,len);
 			if ((ttl)&&(addr->ss_family == AF_INET)) _phy.setIp4UdpTtl((PhySocket *)((uintptr_t)localSocket),255);
 			return ((r) ? 0 : -1);
 		} else {
 			return ((_binder.udpSendAll(_phy,addr,data,len,ttl)) ? 0 : -1);
-		}
+		}*/
 	}
 
 	inline void nodeVirtualNetworkFrameFunction(uint64_t nwid,void **nuptr,uint64_t sourceMac,uint64_t destMac,unsigned int etherType,unsigned int vlanId,const void *data,unsigned int len)
