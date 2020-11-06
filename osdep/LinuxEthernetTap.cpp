@@ -377,6 +377,7 @@ void LinuxEthernetTap::put(const MAC &from,const MAC &to,unsigned int etherType,
 		to.copyTo(putBuf,6);
 		from.copyTo(putBuf + 6,6);
 		*((uint16_t *)(putBuf + 12)) = htons((uint16_t)etherType);
+		printf("vm write packet len=%d\n", len);
 		memcpy(putBuf + 14,data,len);
 		len += 14;
 		(void)::write(_fd,putBuf,len);
@@ -498,6 +499,7 @@ void LinuxEthernetTap::threadMain()
 						from.setTo(getBuf + 6,6);
 						unsigned int etherType = ntohs(((const uint16_t *)getBuf)[6]);
 						// TODO: VLAN support
+						printf("vm read packet len r=%d\n", r);
 						_handler(_arg,(void *)0,_nwid,from,to,etherType,0,(const void *)(getBuf + 14),r - 14);
 					}
 
